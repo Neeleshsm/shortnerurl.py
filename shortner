@@ -1,0 +1,123 @@
+Step 1: Setting up the Environment
+Install Flask:
+
+You can use pip to install Flask, which is a micro web framework for Python.
+
+pip install Flask
+
+Step 2: Creating the URL Shortener API
+Create a Flask App:
+
+Create a Python file (e.g., app.py) for the API.
+from flask import Flask, request, jsonify
+import shortuuid
+import sqlite3
+
+app = Flask(__name__)
+
+# Connect to SQLite database
+conn = sqlite3.connect('url_shortener.db')
+cursor = conn.cursor()
+
+# Create a table for URL mappings if it doesn't exist
+cursor.execute('''
+    CREATE TABLE IF NOT EXISTS url_mappings (
+        short_url TEXT PRIMARY KEY,
+        long_url TEXT,
+        title TEXT
+    )
+''')
+conn.commit()
+
+# Define a route to create a short URL
+@app.route('/shorten', methods=['POST'])
+def shorten_url():
+    data = request.get_json()
+    long_url = data['long_url']
+    title = data.get('title', 'No Title')  # You can add a title for the URL
+    short_url = shortuuid.ShortUUID().random(length=6)
+
+    cursor.execute("INSERT INTO url_mappings (short_url, long_url, title) VALUES (?, ?, ?)",
+                   (short_url, long_url, title))
+    conn.commit()
+
+    return jsonify({"short_url": short_url})
+
+# Define a route to search for URLs
+@app.route('/search', methods=['GET'])
+def search_url():
+    term = request.args.get('term')
+    cursor.execute("SELECT title, long_url FROM url_mappings WHERE title LIKE ?",
+                   ('%' + term + '%',))
+    results = cursor.fetchall()
+
+    return jsonify([{"title": title, "url": url} for title, url in results])
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+Step 3: Creating the Web Interface
+Create an HTML file:
+
+Create an HTML file (e.g., index.html) for the web interface.
+<!DOCTYPE html>
+<html>
+<head>
+    <title>URL Shortener</title>
+</head>
+<body>
+    <h1>URL Shortener</h1>
+    <h2>Shorten a URL</h2>
+    <form id="shorten-form">
+        <input type="text" id="long-url" placeholder="Enter the long URL" required>
+        <input type="text" id="title" placeholder="Enter the title">
+        <button type="submit">Shorten</button>
+    </form>
+    <h2>Search for URLs</h2>
+    <input type="text" id="search-term" placeholder="Enter search term">
+    <button id="search-button">Search</button>
+    <ul id="search-results"></ul>
+
+    <script>
+        const shortenForm = document.getElementById('shorten-form');
+        const searchButton = document.getElementById('search-button');
+        const searchResults = document.getElementById('search-results');
+
+        shortenForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const longUrl = document.getElementById('long-url').value;
+            const title = document.getElementById('title').value;
+            const response = await fetch('/shorten', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ long_url: longUrl, title: title })
+            });
+            const data = await response.json();
+            alert(`Short URL: http://yourdomain.com/${data.short_url}`);
+        });
+
+        searchButton.addEventListener('click', async () => {
+            const searchTerm = document.getElementById('search-term').value;
+            const response = await fetch(`/search?term=${searchTerm}`);
+            const data = await response.json();
+
+            searchResults.innerHTML = '';
+            data.forEach((result) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="${result.url}">${result.title}</a>`;
+                searchResults.appendChild(li);
+            });
+        });
+    </script>
+</body>
+</html>
+Link the HTML and API:
+
+You should host the HTML file along with the API on a web server. Replace "http://yourdomain.com" with your actual domain.
+
+Step 4: Running the Application
+Run your Flask application:
+python app.py
+Access the web interface by visiting "http://yourdomain.com" in your web browser.
